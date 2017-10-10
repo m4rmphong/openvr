@@ -22,7 +22,7 @@ using namespace cv;
 // Variables
 //-------------------------------------------------------------------------------
 VideoCapture	g_webCam;
-Mat				g_camFrame, g_camFrame2;
+Mat				g_camFrame;
 unsigned int	g_uUpdateTimeInterval = 10;
 std::thread		g_threadLoadFrame;
 bool			g_bUpdated = false;
@@ -223,16 +223,17 @@ bool SetupTexture() {
 
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, g_camFrame.cols, g_camFrame.rows, 0, GL_BGR, GL_UNSIGNED_BYTE, g_camFrame.data);
 
-	glGenerateMipmap(GL_TEXTURE_2D);
+	//glGenerateMipmap(GL_TEXTURE_2D);
 
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 
-	GLfloat fLargest;
-	glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &fLargest);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, fLargest);
+	//GLfloat fLargest;
+	//glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &fLargest);
+	//glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, fLargest);
 
 	glBindTexture(GL_TEXTURE_2D, 0);
 
@@ -243,9 +244,8 @@ bool SetupTexture() {
 
 void UpdateFrameTexture() {
 	glBindTexture(GL_TEXTURE_2D, m_frameTexture);
-	//glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, g_camFrame.cols, g_camFrame.rows, 0, GL_BGR, GL_UNSIGNED_BYTE, g_camFrame.data);
-	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, g_camFrame.cols, g_camFrame.rows, GL_BGR, GL_UNSIGNED_BYTE, g_camFrame2.data);
-	//imshow("WebCamera", g_camFrame);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, g_camFrame.cols, g_camFrame.rows, GL_BGR, GL_UNSIGNED_BYTE, g_camFrame.data);
+	//imshow("WebCam", g_camFrame);
 }
 
 //-------------------------------------------------------------------------------
@@ -259,7 +259,6 @@ void Display() {
 	RenderScene();
 
 	glutSwapBuffers();
-	//imshow("WebCamera", g_camFrame);
 	
 	tpNow = std::chrono::high_resolution_clock::now();
 	//std::cout << "FPS :" << 1000.0f / std::chrono::duration_cast<std::chrono::milliseconds>(tpNow - tpLast).count() << "\n";
@@ -311,10 +310,6 @@ int main(int argc, char* argv[]) {
 		return -1;
 	}
 	g_webCam >> g_camFrame;
-	imshow("1", g_camFrame);
-	waitKey(100);
-	g_webCam >> g_camFrame2;
-	imshow("2", g_camFrame2);
 	// opengl setup
 	// glut setup
 	glutInit(&argc,argv);
