@@ -22,6 +22,8 @@
 #include "shared/Matrices.h"
 #include "shared/pathtools.h"
 
+#include <opencv2/opencv.hpp>
+
 #if defined(POSIX)
 #include "unistd.h"
 #endif
@@ -42,6 +44,8 @@ void ThreadSleep( unsigned long nMilliseconds )
 	usleep( nMilliseconds * 1000 );
 #endif
 }
+
+cv::Mat inputFrame;
 
 class CGLRenderModel
 {
@@ -88,6 +92,7 @@ public:
 	void RenderFrame();
 
 	bool SetupTexturemaps();
+	bool SetupFrameTexture();
 
 	void SetupScene();
 	void AddCubeToScene( Matrix4 mat, std::vector<float> &vertdata );
@@ -160,6 +165,7 @@ private: // OpenGL bookkeeping
 	float m_fFarClip;
 
 	GLuint m_iTexture;
+	GLuint m_frameTexture;
 
 	unsigned int m_uiVertcount;
 
@@ -492,6 +498,7 @@ bool CMainApplication::BInitGL()
 		return false;
 
 	SetupTexturemaps();
+	SetupFrameTexture();
 	SetupScene();
 	SetupCameras();
 	SetupStereoRenderTargets();
@@ -984,7 +991,34 @@ bool CMainApplication::SetupTexturemaps()
 
 	return ( m_iTexture != 0 );
 }
+bool CMainApplication::SetupFrameTexture() {
+	
+	if (inputFrame.data == NULL)
+		return false;
 
+	glGenTextures(1,&m_frameTexture);
+	glBindTexture(GL_TEXTURE_2D, m_frameTexture);
+
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, inputFrame.cols, inputFrame.rows, 0, GL_BGR, GL_UNSIGNED_BYTE, inputFrame.data);
+
+	glGenerateMipmap(GL_TEXTURE_2D);
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+
+	GLfloat fLargest;
+	glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &fLargest);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, fLargest);
+
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	std::cout << m_frameTexture << std::endl;
+
+	return (m_frameTexture != 0);
+
+}
 
 //-----------------------------------------------------------------------------
 // Purpose: create a sea of cubes
@@ -1405,7 +1439,8 @@ void CMainApplication::RenderScene( vr::Hmd_Eye nEye )
 		glUseProgram( m_unSceneProgramID );
 		glUniformMatrix4fv( m_nSceneMatrixLocation, 1, GL_FALSE, GetCurrentViewProjectionMatrix( nEye ).get() );
 		glBindVertexArray( m_unSceneVAO );
-		glBindTexture( GL_TEXTURE_2D, m_iTexture );
+		//glBindTexture( GL_TEXTURE_2D, m_iTexture );
+		glBindTexture(GL_TEXTURE_2D, m_frameTexture);
 		glDrawArrays( GL_TRIANGLES, 0, m_uiVertcount );
 		glBindVertexArray( 0 );
 	}
@@ -1824,6 +1859,17 @@ void CGLRenderModel::Draw()
 //-----------------------------------------------------------------------------
 int main(int argc, char *argv[])
 {
+	// read webCam frame
+	cv::VideoCapture webCam;
+	if (!webCam.open(1)) {
+		std::cout << "Can't open Camera" << std::endl;
+	}
+	cv::waitKey(10);
+	webCam >> inputFrame;
+	cv::imshow("WebCamera Image", inputFrame);
+	//cv::waitKey(0);
+
+	
 	CMainApplication *pMainApplication = new CMainApplication( argc, argv );
 
 	if (!pMainApplication->BInit())
