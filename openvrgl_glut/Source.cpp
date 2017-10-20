@@ -244,7 +244,7 @@ glm::mat4x4 GetCurrentMVP(vr::Hmd_Eye eyeIdx) {
 }
 
 void RenderScene() {
-	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+	glClearColor(0.8f, 0.8f, 0.8f, 1.0f);
 	// 1rst attribute buffer : vertices
 	//glEnableVertexAttribArray(0);
 	//glBindBuffer(GL_ARRAY_BUFFER, frameWindowVertexbuffer);
@@ -268,7 +268,7 @@ void RenderScene() {
 }
 
 void RenderSceneOnEye(vr::Hmd_Eye nEye) {
-	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+	glClearColor(0.8f, 0.8f, 0.8f, 1.0f);
 	// 1rst attribute buffer : vertices
 	//glEnableVertexAttribArray(0);
 	//glBindBuffer(GL_ARRAY_BUFFER, frameWindowVertexbuffer);
