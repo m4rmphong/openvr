@@ -8,7 +8,7 @@
 
 #include <openvr.h>
 #include <opencv2\opencv.hpp>
-#include "openNI.h"
+#include "OpenNI.h"
 
 #include <glm/matrix.hpp>
 #include <glm/mat4x4.hpp>
@@ -18,6 +18,7 @@
 
 using namespace std;
 using namespace cv;
+using namespace openni;
 
 //-------------------------------------------------------------------------------
 // Struct
@@ -48,12 +49,20 @@ FramebufferDesc rightEyeDesc;
 //-------------------------------------------------------------------------------
 // Variables
 //-------------------------------------------------------------------------------
+// opencv variable
 VideoCapture	g_webCam;
 Mat				g_camFrame;
 unsigned int	g_uUpdateTimeInterval = 10;
 std::thread		g_threadLoadFrame;
 bool			g_bUpdated = false;
 bool			g_bRunning = true;
+
+// openni variable
+Device g_depthDevice;
+VideoStream g_streamDepth, g_streamColor;
+VideoFrameRef g_frameDepth, g_frameColor;
+Mat g_depthFrame;
+int iMaxDepth;
 
 // openvr variable
 //COpenVRGL* g_pOpenVRGL = nullptr;
@@ -581,6 +590,9 @@ void timer(int iVal)
 	{
 		UpdateFrameTexture();//g_Ball.UpdateTexture(g_imgFrame);
 		g_bUpdated = false;
+		Mat mScaleDepth;
+		g_depthFrame.convertTo(mScaleDepth, CV_8U, 255.0 / iMaxDepth);
+		cv::imshow("DepthImage", mScaleDepth);
 	}
 
 	/*auto* pController = g_pOpenVRGL->GetController(vr::TrackedControllerRole_Invalid);
@@ -618,6 +630,46 @@ int main(int argc, char* argv[]) {
 		return -1;
 	}
 	g_webCam >> g_camFrame;
+
+	// Xtion Setup
+	if (OpenNI::initialize()!=STATUS_OK) {
+		cerr << "OpenNI initial error" << endl;
+	}
+	if (g_depthDevice.open(openni::ANY_DEVICE)!=STATUS_OK) {
+		cerr << "Can't open device" << endl;
+	}
+
+	// depth stream
+	if (g_depthDevice.hasSensor(SENSOR_DEPTH)) {
+		if (g_streamDepth.create(g_depthDevice, openni::SENSOR_DEPTH) == STATUS_OK) {
+			VideoMode mode;
+			mode.setResolution(640, 480);
+			mode.setFps(30);
+			mode.setPixelFormat(PIXEL_FORMAT_DEPTH_1_MM);
+			if (g_streamDepth.setVideoMode(mode) != STATUS_OK) {
+				cerr << "Can't apply mode" << endl;
+			}
+		}
+		else {
+			cerr << "Can't create depth stream on device" << endl;
+		}
+	}
+	
+	// read frame
+	g_streamDepth.start();
+
+	/*while (true) {
+		if (g_streamDepth.isValid()) {
+			g_streamDepth.readFrame(&g_frameDepth);
+			Mat depthImg(g_frameDepth.getHeight(), g_frameDepth.getWidth(), CV_16UC1, (void*)g_frameDepth.getData());
+			Mat mScaleDepth;
+			depthImg.convertTo(mScaleDepth, CV_8U, 255.0 / iMaxDepth);
+			cv::imshow("DepthImage", mScaleDepth);
+		}
+		int key = waitKey(30);
+		if (key == 'n') break;
+	}*/
+
 	// opengl setup
 	// glut setup
 	glutInit(&argc,argv);
@@ -649,7 +701,13 @@ int main(int argc, char* argv[]) {
 			tpNow = std::chrono::system_clock::now();
 			if ((tpNow - tpLUpdate) >= std::chrono::milliseconds(40))
 			{
+				// get new frame
 				g_webCam >> g_camFrame;
+				iMaxDepth = g_streamDepth.getMaxPixelValue();
+				if (g_streamDepth.isValid()) {
+					g_streamDepth.readFrame(&g_frameDepth);
+					g_depthFrame = Mat(g_frameDepth.getHeight(), g_frameDepth.getWidth(), CV_16UC1, (void*)g_frameDepth.getData());
+				}
 				g_bUpdated = true;
 				tpLUpdate = tpNow;
 				
