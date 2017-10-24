@@ -8,6 +8,7 @@
 
 #include <openvr.h>
 #include <opencv2\opencv.hpp>
+#include "openNI.h"
 
 #include <glm/matrix.hpp>
 #include <glm/mat4x4.hpp>
@@ -235,10 +236,12 @@ void SetupCompanionWindow() {
 glm::mat4x4 GetCurrentMVP(vr::Hmd_Eye eyeIdx) {
 	glm::mat4x4 matMVP;
 	if (eyeIdx == vr::Eye_Left) {
-		matMVP = m_mat4VPLeft*m_mat4HMDPose;
+		matMVP = m_mat4ProjectionLeft*glm::inverse(m_mat4HMDPose*m_mat4eyePosLeft);
+		//matMVP = m_mat4VPLeft*m_mat4HMDPose;
 	}
 	else {
-		matMVP = m_mat4VPRight*m_mat4HMDPose;
+		matMVP = m_mat4ProjectionRight*glm::inverse(m_mat4HMDPose*m_mat4eyePosRight);
+		//matMVP = m_mat4VPRight*m_mat4HMDPose;
 	}
 	return matMVP;
 }
@@ -268,7 +271,8 @@ void RenderScene() {
 }
 
 void RenderSceneOnEye(vr::Hmd_Eye nEye) {
-	glClearColor(0.8f, 0.8f, 0.8f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	//glClearColor(0.8f, 0.8f, 0.8f, 1.0f);
 	// 1rst attribute buffer : vertices
 	//glEnableVertexAttribArray(0);
 	//glBindBuffer(GL_ARRAY_BUFFER, frameWindowVertexbuffer);
@@ -336,8 +340,8 @@ void RenderStereoTargets()
 
 void onExit()
 {
-	//g_pOpenVRGL->Release();
-	//delete g_pOpenVRGL;
+	g_bRunning = false;
+	g_threadLoadFrame.join();
 
 }
 
@@ -490,7 +494,7 @@ bool InitVRGL() {
 		return false;
 	}
 
-	// glew initialization
+	/*// glew initialization
 	glewExperimental = GL_TRUE;
 	GLenum nGlewError = glewInit();
 	if (nGlewError != GLEW_OK)
@@ -498,7 +502,7 @@ bool InitVRGL() {
 		printf("%s - Error initializing GLEW! %s\n", __FUNCTION__, glewGetErrorString(nGlewError));
 		return false;
 	}
-	glGetError(); // to clear the error caused deep in GLEW
+	glGetError(); // to clear the error caused deep in GLEW*/
 
 	// gl initialization
 	// opengl-related parameter
@@ -634,9 +638,6 @@ int main(int argc, char* argv[]) {
 	CreateAllShaders();
 
 	// openvr setup
-	//g_pOpenVRGL = new COpenVRGL();
-	//g_pOpenVRGL->Initial(0.1f, 30.f);
-
 	if (!InitVRGL()) {
 		return -1;
 	}
