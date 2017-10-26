@@ -33,6 +33,7 @@ struct VertexDataScene {
 struct VertexDataWindow { // companion window
 	glm::vec2 position;
 	glm::vec2 texCoord;
+	VertexDataWindow(const glm::vec2& pos, const glm::vec2& tex) : position(pos), texCoord(tex){}
 };
 
 struct FramebufferDesc {
@@ -89,13 +90,23 @@ glm::mat4 m_mat4ProjectionRight;
 glm::mat4 m_mat4VPLeft;
 glm::mat4 m_mat4VPRight;
 
+// frame window
 GLuint m_frameTexture;
-
 int frameWindowVertCount;
 GLuint g_frameWindowVAO;
 GLuint frameWindowVertexbuffer;
 GLuint g_renderFrameWindowProgramID;
 GLint m_frameWindowMatrixLocation;
+
+// companion window
+uint32_t m_nCompanionWindowWidth;
+uint32_t m_nCompanionWindowHeight;
+
+GLuint m_companionWindowVAO;
+GLuint m_companionWindowVertBuffer;
+GLuint m_companionWindowIndexBuffer;
+unsigned int m_companionWindowIndexCount;
+GLuint m_companionWindowProgramID;
 
 //-------------------------------------------------------------------------------
 // Purpose: Functions
@@ -170,12 +181,12 @@ bool CreateFrameBuffer(int nWidth, int nHeight, FramebufferDesc& framebufferDesc
 //-------------------------------------------------------------------------------
 void SetupScene() {
 	static const GLfloat g_vertex_buffer_data[] = {
-		-0.5f, -0.5f, -5.0f,  0.0f,  1.0f, // B
-		 0.5f, -0.5f, -5.0f,  1.0f,  1.0f, // A
-		 0.5f,  0.5f, -5.0f,  1.0f,  0.0f, // D
-		 0.5f,  0.5f, -5.0f,  1.0f,  0.0f, // D
-		-0.5f,  0.5f, -5.0f,  0.0f,  0.0f, // C
-		-0.5f, -0.5f, -5.0f,  0.0f,  1.0f, // B
+		-10.5f, -10.5f, -10.0f,  0.0f,  1.0f, // B
+		 10.5f, -10.5f, -10.0f,  1.0f,  1.0f, // A
+		 10.5f,  10.5f, -10.0f,  1.0f,  0.0f, // D
+		 10.5f,  10.5f, -10.0f,  1.0f,  0.0f, // D
+		-10.5f,  10.5f, -10.0f,  0.0f,  0.0f, // C
+		-10.5f, -10.5f, -10.0f,  0.0f,  1.0f, // B
 	};
 	frameWindowVertCount = 6;
 
@@ -239,7 +250,48 @@ void SetupStereoRenderTargets() {
 }
 
 void SetupCompanionWindow() {
+	if (!m_pHMD) return;
+	vector<VertexDataWindow> vVerts;
+	
+	// left eye verts
+	vVerts.push_back(VertexDataWindow(glm::vec2(-1,  1), glm::vec2(0, 1)));
+	vVerts.push_back(VertexDataWindow(glm::vec2( 0,  1), glm::vec2(1, 1)));
+	vVerts.push_back(VertexDataWindow(glm::vec2(-1, -1), glm::vec2(0, 0)));
+	vVerts.push_back(VertexDataWindow(glm::vec2( 0, -1), glm::vec2(1, 0)));
 
+	// right eye verts
+	vVerts.push_back(VertexDataWindow(glm::vec2(0,  1), glm::vec2(0, 1)));
+	vVerts.push_back(VertexDataWindow(glm::vec2(1,  1), glm::vec2(1, 1)));
+	vVerts.push_back(VertexDataWindow(glm::vec2(0, -1), glm::vec2(0, 0)));
+	vVerts.push_back(VertexDataWindow(glm::vec2(1, -1), glm::vec2(1, 0)));
+
+	GLushort vIndices[] = { 0,1,3, 0,3,2, 4,5,7, 4,7,6 };
+	m_companionWindowIndexCount = 12;
+
+	glGenVertexArrays(1, &m_companionWindowVAO);
+	glBindVertexArray(m_companionWindowVAO);
+
+	glGenBuffers(1, &m_companionWindowVertBuffer);
+	glBindBuffer(GL_ARRAY_BUFFER,m_companionWindowVertBuffer);
+	glBufferData(GL_ARRAY_BUFFER, vVerts.size() * sizeof(VertexDataWindow), &vVerts[0], GL_STATIC_DRAW);
+
+	glGenBuffers(1, &m_companionWindowIndexBuffer);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_companionWindowIndexBuffer);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, m_companionWindowIndexCount * sizeof(GLushort), &vIndices[0], GL_STATIC_DRAW);
+
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(VertexDataWindow), (void *)offsetof(VertexDataWindow, position));
+
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(VertexDataWindow), (void *)offsetof(VertexDataWindow, texCoord));
+
+	glBindVertexArray(0);
+
+	glDisableVertexAttribArray(0);
+	glDisableVertexAttribArray(1);
+
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 }
 
 glm::mat4x4 GetCurrentMVP(vr::Hmd_Eye eyeIdx) {
@@ -347,8 +399,67 @@ void RenderStereoTargets()
 	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 }
 
+void RenderCompanionWindow() {
+	glDisable(GL_DEPTH_TEST);
+	glViewport(0, 0, m_nCompanionWindowWidth, m_nCompanionWindowHeight);
+
+	glBindVertexArray(m_companionWindowVAO);
+	glUseProgram(m_companionWindowProgramID);
+
+	// render left eye (first half of index array )
+	glBindTexture(GL_TEXTURE_2D, leftEyeDesc.m_nResolveTextureId);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glDrawElements(GL_TRIANGLES, m_companionWindowIndexCount / 2, GL_UNSIGNED_SHORT, 0);
+
+	// render right eye (second half of index array )
+	glBindTexture(GL_TEXTURE_2D, rightEyeDesc.m_nResolveTextureId);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glDrawElements(GL_TRIANGLES, m_companionWindowIndexCount / 2, GL_UNSIGNED_SHORT, (const void *)(uintptr_t)(m_companionWindowIndexCount));
+
+	glBindVertexArray(0);
+	glUseProgram(0);
+}
+
 void onExit()
 {
+	if (m_pHMD) {
+		vr::VR_Shutdown();
+		m_pHMD = NULL;
+	}
+
+	if (g_renderFrameWindowProgramID) {
+		glDeleteProgram(g_renderFrameWindowProgramID);
+	}
+	if (m_companionWindowProgramID) {
+		glDeleteProgram(m_companionWindowProgramID);
+	}
+
+	glDeleteRenderbuffers(1, &leftEyeDesc.m_nDepthBufferId);
+	glDeleteTextures(1, &leftEyeDesc.m_nRenderTextureId);
+	glDeleteFramebuffers(1, &leftEyeDesc.m_nRenderFramebufferId);
+	glDeleteTextures(1, &leftEyeDesc.m_nResolveTextureId);
+	glDeleteFramebuffers(1, &leftEyeDesc.m_nResolveFramebufferId);
+
+	glDeleteRenderbuffers(1, &rightEyeDesc.m_nDepthBufferId);
+	glDeleteTextures(1, &rightEyeDesc.m_nRenderTextureId);
+	glDeleteFramebuffers(1, &rightEyeDesc.m_nRenderFramebufferId);
+	glDeleteTextures(1, &rightEyeDesc.m_nResolveTextureId);
+	glDeleteFramebuffers(1, &rightEyeDesc.m_nResolveFramebufferId);
+
+	if (m_companionWindowVAO != 0) {
+		glDeleteVertexArrays(1, &m_companionWindowVAO);
+	}
+	if (frameWindowVertexbuffer != 0) {
+		glDeleteVertexArrays(1, &g_frameWindowVAO);
+	}
+
+
 	g_bRunning = false;
 	g_threadLoadFrame.join();
 
@@ -443,8 +554,33 @@ bool CreateAllShaders() {
 		"}\n"
 	);
 	m_frameWindowMatrixLocation = glGetUniformLocation(g_renderFrameWindowProgramID, "matrix");
-	cout << "Shader Created!" << endl;
-	return g_renderFrameWindowProgramID != 0;
+	cout << "Frame window Shader Created!" << endl;
+
+	m_companionWindowProgramID = CompileShader(
+		"CompanionWindow",
+
+		// Vertex Shader
+		"#version 410\n"
+		"layout(location = 0) in vec4 position;\n"
+		"layout(location = 1) in vec2 v2UVcoordsIn;\n"
+		"noperspective out vec2 v2UVcoords;\n"
+		"void main()\n"
+		"{\n"
+		"	v2UVcoords = v2UVcoordsIn;\n"
+		"	gl_Position = position;\n"
+		"}\n",
+
+		// Fragment Shader
+		"#version 410 core\n"
+		"uniform sampler2D mytexture;\n"
+		"noperspective in vec2 v2UVcoords;\n"
+		"out vec4 outputColor;\n"
+		"void main()\n"
+		"{\n"
+		"   outputColor = texture(mytexture, v2UVcoords);\n"
+		"}\n"
+	);
+	return g_renderFrameWindowProgramID != 0 | m_companionWindowProgramID != 0;
 }
 
 //-------------------------------------------------------------------------------
@@ -524,7 +660,7 @@ bool InitVRGL() {
 	SetupScene();
 	SetupCamera();
 	SetupStereoRenderTargets();
-	//SetupCompanionWindow();
+	SetupCompanionWindow();
 	//SetupRenderModels();	
 
 	// compositor initialization
@@ -566,6 +702,7 @@ void Display() {
 	glEnable(GL_DEPTH_TEST);
 
 	RenderStereoTargets();
+	RenderCompanionWindow();
 	//RenderScene();
 
 	vr::Texture_t leftEyeTexture = { (void*)(uintptr_t)leftEyeDesc.m_nResolveTextureId, vr::TextureType_OpenGL, vr::ColorSpace_Gamma };
@@ -675,7 +812,9 @@ int main(int argc, char* argv[]) {
 	glutInit(&argc,argv);
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_DEPTH | GLUT_RGB);
 	// glut window
-	glutInitWindowSize(g_camFrame.cols, g_camFrame.rows);
+	m_nCompanionWindowWidth = 640;
+	m_nCompanionWindowHeight = 320;
+	glutInitWindowSize(m_nCompanionWindowWidth, m_nCompanionWindowHeight);
 	glutCreateWindow("Openvr + WebCamera");
 	// glew initialize
 	glewInit();
@@ -685,8 +824,8 @@ int main(int argc, char* argv[]) {
 	glutKeyboardFunc(Keyboard);
 	
 	// scene setup
-	SetupScene();
-	SetupTexture();
+	//SetupScene();
+	//SetupTexture();
 	CreateAllShaders();
 
 	// openvr setup
