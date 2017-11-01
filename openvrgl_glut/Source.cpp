@@ -801,9 +801,9 @@ int main(int argc, char* argv[]) {
 			if (g_streamColor.setVideoMode(mode) != STATUS_OK) {
 				cerr << "Can't apply mode" << endl;
 			}
-			/*if (g_depthDevice.isImageRegistrationModeSupported(IMAGE_REGISTRATION_DEPTH_TO_COLOR)) {
+			if (g_depthDevice.isImageRegistrationModeSupported(IMAGE_REGISTRATION_DEPTH_TO_COLOR)) {
 				g_depthDevice.setImageRegistrationMode(IMAGE_REGISTRATION_DEPTH_TO_COLOR);
-			}*/
+			}
 		}
 		else {
 			cerr << "Can't create color stream on device" << endl;
