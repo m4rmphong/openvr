@@ -62,7 +62,7 @@ bool			g_bRunning = true;
 Device g_depthDevice;
 VideoStream g_streamDepth, g_streamColor;
 VideoFrameRef g_frameDepth, g_frameColor;
-Mat g_depthFrame;
+Mat g_depthFrame, g_colorFrame;
 int iMaxDepth;
 
 // openvr variable
@@ -112,13 +112,13 @@ GLuint m_companionWindowProgramID;
 // Purpose: Functions
 //-------------------------------------------------------------------------------
 
-glm::mat4 MVPmatrix() {
+/*glm::mat4 MVPmatrix() {
 	glm::mat4 proj = glm::perspective(glm::radians(45.0f),(float)g_camFrame.cols/(float)g_camFrame.rows,0.1f,30.f);
 	glm::mat4 view = glm::lookAt(glm::vec3(2,2,1),glm::vec3(0,0,0),glm::vec3(0,1,0));
 	glm::mat4 model = glm::mat4(1.0f);
 	glm::mat4 mvp = proj*view*model;
 	return mvp;
-}
+}*/
 
 glm::mat4 ConvertMat(const vr::HmdMatrix34_t& mat)
 {
@@ -307,45 +307,21 @@ glm::mat4x4 GetCurrentMVP(vr::Hmd_Eye eyeIdx) {
 	return matMVP;
 }
 
-void RenderScene() {
-	glClearColor(0.8f, 0.8f, 0.8f, 1.0f);
-	// 1rst attribute buffer : vertices
-	//glEnableVertexAttribArray(0);
-	//glBindBuffer(GL_ARRAY_BUFFER, frameWindowVertexbuffer);
-	//glVertexAttribPointer(
-	//	0,                  // attribute 0. No particular reason for 0, but must match the layout in the shader.
-	//	3,                  // size
-	//	GL_FLOAT,           // type
-	//	GL_FALSE,           // normalized?
-	//	0,                  // stride
-	//	(void*)0            // array buffer offset
-	//);
-	// Draw the triangle !
-	//glm::mat4 mvpMatrix = GetCurrentMVP(nEye); 
-	glm::mat4 mvpMatrix = MVPmatrix();
-	glUseProgram(g_renderFrameWindowProgramID);
-	glUniformMatrix4fv(m_frameWindowMatrixLocation, 1, GL_FALSE, &mvpMatrix[0][0]);
-	glBindVertexArray(g_frameWindowVAO);
-	glBindTexture(GL_TEXTURE_2D, m_frameTexture);
-	glDrawArrays(GL_TRIANGLES, 0, frameWindowVertCount); // Starting from vertex 0; 3 vertices total -> 1 triangle
-	glBindVertexArray(0);
-}
+//void RenderScene() {
+//	glClearColor(0.8f, 0.8f, 0.8f, 1.0f);
+//
+//	glm::mat4 mvpMatrix = MVPmatrix();
+//	glUseProgram(g_renderFrameWindowProgramID);
+//	glUniformMatrix4fv(m_frameWindowMatrixLocation, 1, GL_FALSE, &mvpMatrix[0][0]);
+//	glBindVertexArray(g_frameWindowVAO);
+//	glBindTexture(GL_TEXTURE_2D, m_frameTexture);
+//	glDrawArrays(GL_TRIANGLES, 0, frameWindowVertCount); // Starting from vertex 0; 3 vertices total -> 1 triangle
+//	glBindVertexArray(0);
+//}
 
 void RenderSceneOnEye(vr::Hmd_Eye nEye) {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	//glClearColor(0.8f, 0.8f, 0.8f, 1.0f);
-	// 1rst attribute buffer : vertices
-	//glEnableVertexAttribArray(0);
-	//glBindBuffer(GL_ARRAY_BUFFER, frameWindowVertexbuffer);
-	//glVertexAttribPointer(
-	//	0,                  // attribute 0. No particular reason for 0, but must match the layout in the shader.
-	//	3,                  // size
-	//	GL_FLOAT,           // type
-	//	GL_FALSE,           // normalized?
-	//	0,                  // stride
-	//	(void*)0            // array buffer offset
-	//);
-	// Draw the triangle !
+	
 	glm::mat4 mvpMatrix = GetCurrentMVP(nEye); //glm::mat4 mvpMatrix = MVPmatrix();
 	glUseProgram(g_renderFrameWindowProgramID);
 	glUniformMatrix4fv(m_frameWindowMatrixLocation, 1, GL_FALSE, &mvpMatrix[0][0]);
@@ -463,6 +439,10 @@ void onExit()
 	g_bRunning = false;
 	g_threadLoadFrame.join();
 
+	g_streamDepth.destroy();
+	g_depthDevice.close();
+
+	OpenNI::shutdown();
 }
 
 //-------------------------------------------------------------------------------
@@ -587,13 +567,24 @@ bool CreateAllShaders() {
 // Purpose: Texture
 //-------------------------------------------------------------------------------
 bool SetupTexture() {
-	if (g_camFrame.data == NULL)
+	//if (g_camFrame.data == NULL)
+	//	return false;
+	if (g_colorFrame.data == NULL)
 		return false;
+
+	if (g_streamColor.isValid()) {
+		g_streamColor.readFrame(&g_frameColor);
+		g_colorFrame = Mat(g_frameColor.getHeight(), g_frameColor.getWidth(), CV_8UC3, (void*)g_frameColor.getData());
+	}
+
+	Mat mImgBGR;
+	cvtColor(g_colorFrame, mImgBGR, CV_RGB2BGR);
 
 	glGenTextures(1, &m_frameTexture);
 	glBindTexture(GL_TEXTURE_2D, m_frameTexture);
 
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, g_camFrame.cols, g_camFrame.rows, 0, GL_BGR, GL_UNSIGNED_BYTE, g_camFrame.data);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, mImgBGR.cols, mImgBGR.rows, 0, GL_BGR, GL_UNSIGNED_BYTE, mImgBGR.data);
+	//glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, g_camFrame.cols, g_camFrame.rows, 0, GL_BGR, GL_UNSIGNED_BYTE, g_camFrame.data);
 
 	//glGenerateMipmap(GL_TEXTURE_2D);
 
@@ -615,8 +606,12 @@ bool SetupTexture() {
 }
 
 void UpdateFrameTexture() {
+	Mat mImgBGR;
+	cvtColor(g_colorFrame, mImgBGR, CV_RGB2BGR);
+	//cvtColor(g_colorFrame, g_camFrame, CV_RGB2BGR);
+
 	glBindTexture(GL_TEXTURE_2D, m_frameTexture);
-	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, g_camFrame.cols, g_camFrame.rows, GL_BGR, GL_UNSIGNED_BYTE, g_camFrame.data);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, mImgBGR.cols, mImgBGR.rows, GL_BGR, GL_UNSIGNED_BYTE, mImgBGR.data);
 	//imshow("WebCam", g_camFrame);
 }
 
@@ -730,6 +725,10 @@ void timer(int iVal)
 		Mat mScaleDepth;
 		g_depthFrame.convertTo(mScaleDepth, CV_8U, 255.0 / iMaxDepth);
 		cv::imshow("DepthImage", mScaleDepth);
+
+		Mat mImgBGR;
+		cvtColor(g_colorFrame, mImgBGR, CV_RGB2BGR);
+		cv::imshow("ColorImage", mImgBGR);
 	}
 
 	/*auto* pController = g_pOpenVRGL->GetController(vr::TrackedControllerRole_Invalid);
@@ -762,12 +761,12 @@ void Keyboard(unsigned char key, int x, int y) {
 //-------------------------------------------------------------------------------
 int main(int argc, char* argv[]) {
 	// webCam setup
-	if (!g_webCam.open(1)) {
+	/*if (!g_webCam.open(1)) {
 		cout << "Cannot open the camera." << endl;
 		return -1;
 	}
 	g_webCam >> g_camFrame;
-
+*/
 	// Xtion Setup
 	if (OpenNI::initialize()!=STATUS_OK) {
 		cerr << "OpenNI initial error" << endl;
@@ -778,7 +777,7 @@ int main(int argc, char* argv[]) {
 
 	// depth stream
 	if (g_depthDevice.hasSensor(SENSOR_DEPTH)) {
-		if (g_streamDepth.create(g_depthDevice, openni::SENSOR_DEPTH) == STATUS_OK) {
+		if (g_streamDepth.create(g_depthDevice, SENSOR_DEPTH) == STATUS_OK) {
 			VideoMode mode;
 			mode.setResolution(640, 480);
 			mode.setFps(30);
@@ -791,9 +790,29 @@ int main(int argc, char* argv[]) {
 			cerr << "Can't create depth stream on device" << endl;
 		}
 	}
+
+	// color stream
+	if (g_depthDevice.hasSensor(SENSOR_COLOR)) {
+		if (g_streamColor.create(g_depthDevice, SENSOR_COLOR) == STATUS_OK) {
+			VideoMode mode;
+			mode.setResolution(640, 480);
+			mode.setFps(30);
+			mode.setPixelFormat(PIXEL_FORMAT_RGB888);
+			if (g_streamColor.setVideoMode(mode) != STATUS_OK) {
+				cerr << "Can't apply mode" << endl;
+			}
+			/*if (g_depthDevice.isImageRegistrationModeSupported(IMAGE_REGISTRATION_DEPTH_TO_COLOR)) {
+				g_depthDevice.setImageRegistrationMode(IMAGE_REGISTRATION_DEPTH_TO_COLOR);
+			}*/
+		}
+		else {
+			cerr << "Can't create color stream on device" << endl;
+		}
+	}
 	
 	// read frame
 	g_streamDepth.start();
+	g_streamColor.start();
 
 	/*while (true) {
 		if (g_streamDepth.isValid()) {
@@ -841,11 +860,15 @@ int main(int argc, char* argv[]) {
 			if ((tpNow - tpLUpdate) >= std::chrono::milliseconds(40))
 			{
 				// get new frame
-				g_webCam >> g_camFrame;
+				//g_webCam >> g_camFrame;
 				iMaxDepth = g_streamDepth.getMaxPixelValue();
 				if (g_streamDepth.isValid()) {
 					g_streamDepth.readFrame(&g_frameDepth);
 					g_depthFrame = Mat(g_frameDepth.getHeight(), g_frameDepth.getWidth(), CV_16UC1, (void*)g_frameDepth.getData());
+				}
+				if (g_streamColor.isValid()) {
+					g_streamColor.readFrame(&g_frameColor);
+					g_colorFrame = Mat(g_frameColor.getHeight(), g_frameColor.getWidth(), CV_8UC3, (void*)g_frameColor.getData());
 				}
 				g_bUpdated = true;
 				tpLUpdate = tpNow;
